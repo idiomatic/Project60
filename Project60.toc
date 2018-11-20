@@ -1,0 +1,8 @@
+## Interface: 80000
+## Title: Project60
+## Notes: Project 60 Enforcement
+## Version: 2018-11-20
+## Author: idiomatiq
+## X-Category: Guild
+
+Project60.lua
