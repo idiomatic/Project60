@@ -27,55 +27,27 @@ local config = {
 
 local LEVEL_RIDING = 40
 
-local RACE_CLASSES_VANILLA = {
-    HumanPRIEST = true,
-    HumanROGUE = true,
-    HumanWARRIOR = true,
-    HumanMAGE = true,
-    HumanWARLOCK = true,
-    HumanPALADIN = true,
+local RACES_ALLOWED = {
+    Human = true,
+    NightElf = true,
+    Dwarf = true,
+    Gnome = true,
+    Orc = true,
+    Troll = true,
+    Scourge = true,
+    Tauren = true,
+}
 
-    NightElfPRIEST = true,
-    NightElfROGUE = true,
-    NightElfWARRIOR = true,
-    NightElfDRUID = true,
-    NightElfHUNTER = true,
-
-    DwarfPRIEST = true,
-    DwarfROGUE = true,
-    DwarfWARRIOR = true,
-    DwarfHUNTER = true,
-    DwarfPALADIN = true,
-
-    GnomeROGUE = true,
-    GnomeWARRIOR = true,
-    GnomeMAGE = true,
-    GnomeWARLOCK = true,
-
-    OrcROGUE = true,
-    OrcWARRIOR = true,
-    OrcMAGE = true,
-    OrcHUNTER = true,
-    OrcWARLOCK = true,
-    OrcSHAMAN = true,
-
-    TrollPRIEST = true,
-    TrollROGUE = true,
-    TrollWARRIOR = true,
-    TrollMAGE = true,
-    TrollHUNTER = true,
-    TrollSHAMAN = true,
-
-    ScourgePRIEST = true,
-    ScourgeROGUE = true,
-    ScourgeWARRIOR = true,
-    ScourgeMAGE = true,
-    ScourgeWARLOCK = true,
-
-    TaurenWARRIOR = true,
-    TaurenDRUID = true,
-    TaurenHUNTER = true,
-    TaurenSHAMAN = true,
+local CLASSES_ALLOWED = {
+    DRUID = true,
+    HUNTER = true,
+    MAGE = true,
+    PALADIN = true,
+    PRIEST = true,
+    ROGUE = true,
+    ROGUE = true,
+    SHAMAN = true,
+    WARLOCK = true,
 }
 
 local MAPAREA_DISALLOWED = {
@@ -238,6 +210,7 @@ end
 
 local function AuditMount()
     if not IsMounted() then return end
+    if UnitOnTaxi("player") then return end
     
     if UnitLevel("player") < LEVEL_RIDING then
         if config.enforce then
@@ -305,12 +278,15 @@ local function AllowedItem(itemID)
 end
 
 local function AuditRaceAndClass()
-    local _, raceEN = UnitRace("player")
-    local _, classEN = UnitClass("player")
+    local race, raceEN = UnitRace("player")
+    local class, classEN = UnitClass("player")
 
-    local classes = RACE_CLASSES_VANILLA[raceEN .. classEN]
-    if not classes then
-        Warning(L("Disallowed race or class"))
+    if not RACES_ALLOWED[raceEN] then
+        Warning(L("Disallowed race %s"), race)
+    end
+
+    if not CLASSES_ALLOWED[classEN] then
+        Warning(L("Disallowed class %s"), class)
     end
 end
 
@@ -505,6 +481,7 @@ end
 
 local original_HeirloomsJournal_OnShow = nil
 
+-- hide contents of Heirlooms tab
 local function patched_HeirloomsJournal_OnShow(...)
     if config.enabled then
         if config.enforce then
@@ -522,6 +499,7 @@ end
 
 local original_LFD_IsEmpowered = LFD_IsEmpowered
 
+-- disables Join button
 local function patched_LFD_IsEmpowered(...)
     if config.enabled and config.enforce then
         return false
@@ -532,6 +510,7 @@ end
 
 local original_GroupFinderFrame_OnShow = GroupFinderFrame:GetScript("OnShow")
 
+-- timely display of message
 local function patched_GroupFinderFrame_OnShow(...)
     if config.enabled then
         if config.enforce then
@@ -548,6 +527,7 @@ end
 
 local original_RaidBrowser_IsEmpowered = RaidBrowser_IsEmpowered
 
+-- UNTESTED
 local function patched_RaidBrowser_IsEmpowered(...)
     if config.enabled and config.enforce then
         return false
@@ -558,6 +538,7 @@ end
 
 local original_RaidFinderFrame_OnShow = RaidFinderFrame:GetScript("OnShow")
 
+-- timely display of message
 local function patched_RaidFinderFrame_OnShow(...)
     if config.enabled then
         if config.enforce then
@@ -573,15 +554,28 @@ end
 -- MAIL
 
 function eventFrame:MAIL_INBOX_UPDATE()
+    -- XXX not ready to affect users
+    if true then return end
+
     -- XXX gather blocked senders when at a mailbox
     -- XXX compare blocked senders with group/guild members
     -- XXX guildies added to unblocked senders
 
-    _, _, sender, _, money = GetInboxHeaderInfo(InboxFrame.openMailID)
+    ChatMessage("MAIL_INBOX_UPDATE")
+    _, _, sender, _, money, _, _, _, _, _, _, _, isGM = GetInboxHeaderInfo(InboxFrame.openMailID)
+    -- XXX "The WoW Dev Team", "%s"
+    -- XXX "Usuri Brightcoin", "Currency Conversion: %s"
+    -- XXX "Jepetto Joybuzz", "Upgraded Toy"
+    -- XXX "Enchanter Nalthanis", "Updated Materials"
+    -- XXX "Brew of the Month Club", "%s"
+
     --OpenMailFrame.activeAttachmentButtons
     --OpenMailFrame.OpenMailAttachments[i]:Disable()
     --OpenMailFrame.ButtonCOD:Disable()
     --OpenMailMoneyButton:Disable()
+
+    ChatMessage("MAIL_INBOX_UPDATE sender %s IsInMyGuild %s", sender, IsInMyGuild(sender))
+    ChatMessage("MAIL_INBOX_UPDATE gm %s", tostring(isGM))
 end
 
 -- MOUNT
@@ -661,17 +655,44 @@ end
 
 local original_AreTalentsLocked = AreTalentsLocked
 
+-- conveniently disables the MainMenuBarMicroButton alert
 local function patched_AreTalentsLocked(...)
     if config.enabled then
         if config.enforce then
-            ChatMessage(L("Disabled Talents"))
             return true
-        else
-            ChatMessage(L("No talents"))
         end
     end
     
     return original_AreTalentsLocked(...)
+end
+
+local original_PlayerTalentFrameTalents_OnShow = nil
+
+-- hide contents of Talents tab
+local function patched_PlayerTalentFrameTalents_OnShow(...)
+    original_PlayerTalentFrameTalents_OnShow(...)
+
+    if config.enabled then
+        if config.enforce then
+            PlayerTalentFrameTalents:Hide()
+            ChatMessage(L("Disabled Talents"))
+        else
+            ChatMessage(L("No talents"))
+        end
+    end
+end
+
+local original_TalentMicroButton_HasPvpTalentAlertToShow = TalentMicroButton.HasPvpTalentAlertToShow
+
+-- hide "You have unspent PvP points" alerts
+local function patched_TalentMicroButton_HasPvpTalentAlertToShow(...)
+    if config.enabled then
+        if config.enforce then
+            return false
+        end
+    end
+
+    return original_TalentMicroButton_HasPvpTalentAlertToShow(...)
 end
 
 -- TRAINING
@@ -781,6 +802,14 @@ end
 
 -- MAIN
 
+LFD_IsEmpowered = patched_LFD_IsEmpowered
+GroupFinderFrame:SetScript("OnShow", patched_GroupFinderFrame_OnShow)
+RaidBrowser_IsEmpowered = patched_RaidBrowser_IsEmpowered
+RaidFinderFrame:SetScript("OnShow", patched_RaidFinderFrame_OnShow)
+AreTalentsLocked = patched_AreTalentsLocked
+GetTrainerServiceInfo = patched_GetTrainerServiceInfo
+TalentMicroButton.HasPvpTalentAlertToShow = patched_TalentMicroButton_HasPvpTalentAlertToShow
+
 local function Enable()
     -- reset message debouncers
     wipe(recentMessages)
@@ -807,13 +836,6 @@ local function Enable()
     if VERSION_SCOPE == "CHANNEL" then
         JoinTemporaryChannel(VERSION_CHANNEL, nil, eventFrame:GetID())
     end
-
-    LFD_IsEmpowered = patched_LFD_IsEmpowered
-    RaidBrowser_IsEmpowered = patched_RaidBrowser_IsEmpowered
-    GroupFinderFrame:SetScript("OnShow", patched_GroupFinderFrame_OnShow)
-    RaidFinderFrame:SetScript("OnShow", patched_RaidFinderFrame_OnShow)
-    AreTalentsLocked = patched_AreTalentsLocked
-    GetTrainerServiceInfo = patched_GetTrainerServiceInfo
 
     config.enabled = true
 
@@ -882,6 +904,11 @@ function eventFrame:ADDON_LOADED(addon)
         if not original_HeirloomsJournal_OnShow then
             original_HeirloomsJournal_OnShow = HeirloomsJournal:GetScript("OnShow")
             HeirloomsJournal:SetScript("OnShow", patched_HeirloomsJournal_OnShow)
+        end
+    elseif addon == "Blizzard_TalentUI" then
+        if not original_PlayerTalentFrameTalents_OnShow then
+            original_PlayerTalentFrameTalents_OnShow = PlayerTalentFrameTalents_OnShow
+            PlayerTalentFrameTalents:SetScript("OnShow", patched_PlayerTalentFrameTalents_OnShow)
         end
     end
 end
@@ -960,6 +987,8 @@ L["frFR"] = {
     ["Portal: Silvermoon"] = nil,
     ["Portal: Dalaran - Northrend"] = nil,
     ["Disallowed race or class"] = nil,
+    ["Disallowed race %s"] = nil,
+    ["Disallowed class %s"] = nil,
     ["Deleted heirloom"] = nil,
     ["Unequipped heirloom or disallowed gear"] = nil,
     ["No heirloom or disallowed gear"] = nil,

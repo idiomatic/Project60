@@ -52,7 +52,7 @@
 - [ ] add sister guild mail
 - [ ] hunter: block pets
 - [ ] druid: block flight-form until 70: GetShapeshiftForm() == 5 or 6 (balance)
-- [ ] block tabards
+- [ ] block city tabards
 - [ ] Project70: allow flying at 70
 - [ ] enforce raid progression
 - [ ] guild configuration

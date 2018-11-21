@@ -2,7 +2,7 @@
 
 ## Races
 
-Only races that were available in Vanilla.
+~~Only races that were available in Vanilla.~~
 
 No Pandaren [else warning].
 
@@ -108,9 +108,7 @@ No dual spec.
 
 Re-spec at a class trainer is allowed.
 
-No talents [block tab].
-
-Project Cold Fame variant: No talents until Molten Core set bonus.
+~~No talents [block tab].~~  No talents until Molten Core set bonus.
 
 No glyphs.
 
@@ -132,9 +130,9 @@ No armor reducing weapons (e.g., Annihilator).
 
 ## Buffs
 
-No use of anything that increases experience gain (e.g., WoW
-Anniversary gift, Holiday quest buffs, Darkmoon Faire buffs,
-Recruit-a-Friend, potions, etc.).
+No use of anything that increases experience gain (i.e., XP
+multipliers, e.g., WoW Anniversary gift, Holiday quests, Darkmoon
+Faire buffs, Recruit-a-Friend, potions, etc.).
 
 
 ## Trade
@@ -255,6 +253,8 @@ No XP gain after level 70.
 
 ---
 
-  [asmongold]: https://pastebin.com/y5imtWm0 "Project 60 Rules & Info"
-  [r_projectsixty]: https://www.reddit.com/r/ProjectSixty/comments/3tse89/rules/ "Reddit ProjectSixty"
-  [wowhead_rpg]: https://www.wowhead.com/returning-player-guide-changes-classic-vanilla "Wowhead Returning Players Guide"
+asmongold: https://pastebin.com/y5imtWm0 "Project 60 Rules & Info"
+
+r_projectsixty: https://www.reddit.com/r/ProjectSixty/comments/3tse89/rules/ "Reddit ProjectSixty"
+
+wowhead_rpg: https://www.wowhead.com/returning-player-guide-changes-classic-vanilla "Wowhead Returning Players Guide"
