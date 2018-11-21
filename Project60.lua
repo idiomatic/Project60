@@ -18,7 +18,7 @@ local SLASHCMD = string.gsub(AddonName, "%s+", "")
 local config = {
     enabled = true,
     enforce = true,
-    version = "2018-11-20",
+    version = "2018-11-21",
     ignored_version_senders = {},
     sister_guilds = {},
 }
