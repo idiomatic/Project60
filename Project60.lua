@@ -18,7 +18,7 @@ local SLASHCMD = string.gsub(AddonName, "%s+", "")
 local config = {
     enabled = true,
     enforce = true,
-    version = "2018-11-21",
+    version = "2018-11-22",
     ignored_version_senders = {},
     sister_guilds = {},
 }
@@ -728,6 +728,9 @@ local function patched_GetTrainerServiceInfo(skillIndex)
         if level then
             if config.enforce then
                 reqLevel = level
+                if reqLevel > UnitLevel("player") then
+                    serviceType = "unavailable"
+                end
                 if Debounce("Adjusted level requirement") then
                     ChatMessage(L("Adjusted %s level requirement"), serviceName)
                 end

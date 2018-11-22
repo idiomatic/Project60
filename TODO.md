@@ -44,6 +44,7 @@
       end
   end
   ```
+- [ ] block heirloom flightpath reveal (e.g., Surviving Kalimdor)
 - [ ] block vehicle passenger
 - [ ] detect mass rez cast
 - [ ] audit infractions done before addon install (e.g., riding skill)

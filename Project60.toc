@@ -1,7 +1,7 @@
 ## Interface: 80000
 ## Title: Project60
-## Notes: Project 60 Enforcement
-## Version: 2018-11-21
+## Notes: Project 60 Self-Enforcement
+## Version: 2018-11-22
 ## Author: idiomatiq
 ## X-Category: Guild
 
