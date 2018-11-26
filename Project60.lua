@@ -18,9 +18,11 @@ local SLASHCMD = string.gsub(AddonName, "%s+", "")
 local config = {
     enabled = true,
     enforce = true,
-    version = "2018-11-22",
+    version = "2018-11-26",
     ignored_version_senders = {},
-    sister_guilds = {},
+    -- XXX make end-user configurable
+    sister_guilds = {"Classic Alpha", "Classic Chads", "No Changes", "Project Cold Flame"},
+    sister_characters = {},
 }
 
 -- CONSTANTS
@@ -120,13 +122,6 @@ local function ChatMessage(fmt, ...)
     end
 end
 
--- player intervention required, so be extra annoying
-local function Warning(fmt, ...)
-    fmt = string.format("|cffffc000%s:|r %s", L("Warning"), fmt)
-    ChatMessage(fmt, ...)
-    PlaySound(SOUNDKIT.IG_QUEST_LOG_ABANDON_QUEST)
-end
-
 local eventFrame = CreateFrame("Frame", AddonName)
 
 -- other uncontested versions have a better chance at announcing first
@@ -152,6 +147,8 @@ end
 
 -- AUDIT
 
+-- AUDIT/AREA
+
 local function AllowedArea(areaID)
     while true do
         local mapInfo = C_Map.GetMapInfo(areaID)
@@ -166,12 +163,24 @@ local function AllowedArea(areaID)
     return true
 end
 
+StaticPopupDialogs["PROJECT60_DISALLOWED_AREA"] = {
+    button1 = OKAY,
+    text = L("Disallowed area %s"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    sound = SOUNDKIT.IG_QUEST_LOG_ABANDON_QUEST,
+}
+
 local function AuditArea()
     local areaID = C_Map.GetBestMapForUnit("player")
     if not AllowedArea(areaID) then
-        Warning(L("Disallowed area"))
+        local mapDetails = C_Map.GetMapInfo(areaID)
+        StaticPopup_Show("PROJECT60_DISALLOWED_AREA", mapDetails.name)
     end
 end
+
+-- AUDIT/AURA
 
 local function AllowedAura(spellID)
     return not AURAS_DISALLOWED[spellID]
@@ -191,7 +200,11 @@ function AuditAuras()
     end
 end
 
+-- AUDIT/MOUNT
+
 local function AllowedMount(mountID)
+    if UnitLevel("player") < LEVEL_RIDING then return false end
+
     -- Traveler's Tundra Mammoth
     if mountID == 284 then return false end
     -- Grand Expedition Yak
@@ -208,33 +221,32 @@ local function AllowedMount(mountID)
     return mountType == 230 or mountType == 241
 end
 
+StaticPopupDialogs["PROJECT60_DISMOUNT"] = {
+    button1 = OKAY,
+    button2 = CANCEL,
+    text = L("Dismount %s?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
+        Dismount()
+    end,
+}
+
 local function AuditMount()
     if not IsMounted() then return end
     if UnitOnTaxi("player") then return end
     
-    if UnitLevel("player") < LEVEL_RIDING then
-        if config.enforce then
-            Dismount()
-            ChatMessage(L("Dismounted"))
-        else
-            ChatMessage(L("No mounts until level %d"), LEVEL_RIDING)
-        end
-        return
-    end
-
     for _, mountID in ipairs(C_MountJournal.GetMountIDs()) do
-        local creatureName, _, _, active = C_MountJournal.GetMountInfoByID(mountID)
+        local mountName, _, _, active = C_MountJournal.GetMountInfoByID(mountID)
         if active and not AllowedMount(mountID) then
-            if config.enforce then
-                Dismount()
-                ChatMessage(L("Dismounted %s"), creatureName)
-            else
-                ChatMessage(L("No special or flying mounts"))
-            end
+            StaticPopup_Show("PROJECT60_DISMOUNT", mountName)
             return
         end
     end
 end
+
+-- AUDIT/TRAINING
 
 local function AllowedTrainer(serviceName)
     if string.find(serviceName, L("Jewelcrafting"), 1, true) then
@@ -261,6 +273,40 @@ local function AllowedTrainerService(serviceName, skillLevel)
     return true
 end
 
+-- AUDIT/CLASS
+-- AUDIT/RACE
+
+StaticPopupDialogs["PROJECT60_DISALLOWED_RACE"] = {
+    button1 = OKAY,
+    text = L("Disallowed race %s"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+StaticPopupDialogs["PROJECT60_DISALLOWED_CLASS"] = {
+    button1 = OKAY,
+    text = L("Disallowed class %s"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+local function AuditRaceAndClass()
+    local race, raceEN = UnitRace("player")
+    local class, classEN = UnitClass("player")
+
+    if not RACES_ALLOWED[raceEN] then
+        StaticPopup_Show("PROJECT60_DISALLOWED_RACE", race)
+    end
+
+    if not CLASSES_ALLOWED[classEN] then
+        StaticPopup_Show("PROJECT60_DISALLOWED_CLASS", class)
+    end
+end
+
+-- AUDIT/EQUIP
+
 local function AllowedItem(itemID)
     if itemID == nil then return false end
 
@@ -275,19 +321,6 @@ local function AllowedItem(itemID)
     -- XXX PvP item
 
     return true
-end
-
-local function AuditRaceAndClass()
-    local race, raceEN = UnitRace("player")
-    local class, classEN = UnitClass("player")
-
-    if not RACES_ALLOWED[raceEN] then
-        Warning(L("Disallowed race %s"), race)
-    end
-
-    if not CLASSES_ALLOWED[classEN] then
-        Warning(L("Disallowed class %s"), class)
-    end
 end
 
 local function CursorUnequip()
@@ -333,56 +366,64 @@ local function AuditAllSlots()
     end
 end
 
+-- AUDIT/SPELLS
+
 local function AuditSpells()
     -- XXX check for premature riding training
     -- XXX check for level >300 tradeskills
 end
 
-local allowed_guilds = {}
+-- AUDIT/GROUP
 
-local function AllowedGuilds()
-    wipe(allowed_guilds)
+local function AllowedGuild(guildName)
+    -- XXX if sister_guilds is a map
+    if config.sister_guilds[guildName] then return true end
 
-    -- XXX realm blind
-    local playerGuild = GetGuildInfo("player")
-    if playerGuild then
-        allowed_guilds[playerGuild] = true
-        for _, guild in ipairs(config.sister_guilds) do
-            allowed_guilds[guild] = true
-        end
+    -- XXX if sister_guilds is an array
+    for _, sister in ipairs(config.sister_guilds) do
+        if sister == guildName then return true end
     end
-    return allowed_guilds
+
+    return false
+end
+
+local ALLOWED_NPCS = {
+    ["The WoW Dev Team"] = true,
+    ["Usuri Brightcoin"] = true, -- Currency Conversion
+    ["Jepetto Joybuzz"] = true, -- Upgraded Toy
+    ["Enchanter Nalthanis"] = true, -- Updated Materials
+    ["Brew of the Month Club"] = true,
+    ["The Postmaster"] = true,
+}
+
+local function AllowedCharacter(name)
+    return ALLOWED_NPCS[name] or UnitIsInMyGuild(name) or name and config.sister_characters[name]
 end
 
 local function AllowedUnit(unitID)
     if UnitIsInMyGuild(unitID) then return true end
 
-    -- XXX Alas, GetGuildInfo() is ranged
-    --[[
-    local allowed = AllowedGuilds()
+    local name = UnitName(unitID)
+    if AllowedCharacter(name) then return true end
+
+    -- Alas, GetGuildInfo() is ranged
     local guild = GetGuildInfo(unitID)
-    return allowed[guild]
-    ]]--
+    if AllowedGuild(guild) then
+        config.sister_characters[name] = true
+        return true
+    end
+
     return false
 end
 
 local function AllowedParty()
     if not IsInGuild() then return false end
 
-    --local allowed = AllowedGuilds()
     for partyIndex = 1, GetNumGroupMembers() - 1 do
-        if not UnitIsInMyGuild("party" .. partyIndex) then
-            return false
+        local unitID = "party" .. partyIndex
+        if not AllowedUnit(unitID) then
+            return false, unitID
         end
-
-        --[[
-        -- XXX Alas, GetGuildInfo() is ranged
-        local guild = GetGuildInfo("party" .. partyIndex)
-        if not allowed[guild] then
-            ChatMessage("not allowed %s guild %s", partyIndex, tostring(guild))
-            return false
-        end
-        ]]--
     end
     return true
 end
@@ -390,35 +431,34 @@ end
 local function AllowedRaid()
     if not IsInGuild() then return false end
 
-    --local allowed = AllowedGuilds()
     for raiderIndex = 1, GetNumGroupMembers() do
-        if not UnitIsInMyGuild("raid" .. raiderIndex) then
-            return false
+        local unitID = "raid" .. raidIndex
+        if not AllowedUnit(unitID) then
+            return false, unitID
         end
-
-        --[[
-        -- XXX Alas, GetGuildInfo() is ranged
-
-        local guild = GetGuildInfo("raid" .. raiderIndex)
-        if not allowed[guild] then
-            return false
-        end
-        ]]--
     end
     return true
 end
 
+StaticPopupDialogs["PROJECT60_LEAVE_PARTY"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Leave party with outsider %s?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
+        LeaveParty()
+    end,
+}
+
 local function AuditGroup()
     if not IsInGroup() then return end
 
-    local allowed = (IsInRaid() and AllowedRaid or AllowedParty)()
+    local allowed, outsiderUnitID = (IsInRaid() and AllowedRaid or AllowedParty)()
     if not allowed then
-        if config.enforce then
-            LeaveParty()
-            ChatMessage(L("Left party with outsiders"))
-        else
-            ChatMessage(L("No parties with outsiders"))
-        end
+        local outsiderName = GetUnitName(outsiderUnitID)
+        StaticPopup_Show("PROJECT60_LEAVE_PARTY", outsiderName)
     end
 end
 
@@ -432,13 +472,21 @@ end
 
 -- AUCTION HOUSE
 
-function eventFrame:AUCTION_HOUSE_SHOW()
-    if config.enforce then
+StaticPopupDialogs["PROJECT60_CLOSE_AUCITON_HOUSE"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Close Auction House?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
         CloseAuctionHouse()
-        ChatMessage(L("Leaving Auction House"))
-    else
-        ChatMessage(L("No Auction House"))
-    end
+    end,
+}
+
+function eventFrame:AUCTION_HOUSE_SHOW()
+    -- XXX make the dialog take up AH frame
+    StaticPopup_Show("PROJECT60_CLOSE_AUCITON_HOUSE")
 end
 
 -- AURA
@@ -458,14 +506,21 @@ end
 
 -- GROUP
 
+StaticPopupDialogs["PROJECT60_DECLINE_GROUP"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Decline group with with outsider %s?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
+        DeclineGroup()
+    end,
+}
+
 function eventFrame:PARTY_INVITE_REQUEST(leader)
-    if not AllowedUnit(leader) then
-        if config.enforce then
-            DeclineGroup()
-            ChatMessage(L("Declined group with outsider"))
-        else
-            ChatMessage(L("No groups with outsider"))
-        end
+    if not AllowedCharacter(leader) then
+        StaticPopup_Show("PROJECT60_DECLINE_GROUP", leader)
     end
 end
 
@@ -484,6 +539,7 @@ local original_HeirloomsJournal_OnShow = nil
 -- hide contents of Heirlooms tab
 local function patched_HeirloomsJournal_OnShow(...)
     if config.enabled then
+        -- XXX replace with dismissable opaque overlay frame
         if config.enforce then
             HeirloomsJournal:Hide()
             ChatMessage(L("Disabled Heirlooms"))
@@ -513,6 +569,7 @@ local original_GroupFinderFrame_OnShow = GroupFinderFrame:GetScript("OnShow")
 -- timely display of message
 local function patched_GroupFinderFrame_OnShow(...)
     if config.enabled then
+        -- XXX replace with dismissable opaque overlay frame
         if config.enforce then
             ChatMessage(L("Disabled Dungeon Finder and Raid Finder"))
         else
@@ -541,6 +598,7 @@ local original_RaidFinderFrame_OnShow = RaidFinderFrame:GetScript("OnShow")
 -- timely display of message
 local function patched_RaidFinderFrame_OnShow(...)
     if config.enabled then
+        -- XXX replace with dismissable opaque overlay frame
         if config.enforce then
             ChatMessage(L("Disabled Dungeon Finder and Raid Finder"))
         else
@@ -553,29 +611,29 @@ end
 
 -- MAIL
 
-function eventFrame:MAIL_INBOX_UPDATE()
-    -- XXX not ready to affect users
-    if true then return end
+local original_OpenMailAttachment_OnClick = OpenMailAttachment_OnClick
 
-    -- XXX gather blocked senders when at a mailbox
-    -- XXX compare blocked senders with group/guild members
-    -- XXX guildies added to unblocked senders
+StaticPopupDialogs["PROJECT60_TAKE_MAIL_ITEM"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Take mail item from outsider %s?"),
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function(self, data)
+        original_OpenMailAttachment_OnClick(data.frame, data.index)
+    end,
+}
 
-    ChatMessage("MAIL_INBOX_UPDATE")
+-- XXX block money
+
+local function patched_OpenMailAttachment_OnClick(frame, index)
     _, _, sender, _, money, _, _, _, _, _, _, _, isGM = GetInboxHeaderInfo(InboxFrame.openMailID)
-    -- XXX "The WoW Dev Team", "%s"
-    -- XXX "Usuri Brightcoin", "Currency Conversion: %s"
-    -- XXX "Jepetto Joybuzz", "Upgraded Toy"
-    -- XXX "Enchanter Nalthanis", "Updated Materials"
-    -- XXX "Brew of the Month Club", "%s"
+    if not (isGM or AllowedCharacter(sender)) then
+        StaticPopup_Show("PROJECT60_TAKE_MAIL_ITEM", sender, nil, {frame = frame, index = index})
+        return
+    end
 
-    --OpenMailFrame.activeAttachmentButtons
-    --OpenMailFrame.OpenMailAttachments[i]:Disable()
-    --OpenMailFrame.ButtonCOD:Disable()
-    --OpenMailMoneyButton:Disable()
-
-    ChatMessage("MAIL_INBOX_UPDATE sender %s IsInMyGuild %s", sender, IsInMyGuild(sender))
-    ChatMessage("MAIL_INBOX_UPDATE gm %s", tostring(isGM))
+    return original_OpenMailAttachment_OnClick(frame, index)
 end
 
 -- MOUNT
@@ -610,6 +668,7 @@ function eventFrame:TOYS_UPDATED()
     if not config.enabled then return end
     
     if ToyBox and ToyBox:IsVisible() then
+        -- XXX replace with dismissable opaque overlay frame
         if config.enforce then
             ToyBox:Hide()
             ChatMessage(L("Disabled Toy Box"))
@@ -621,28 +680,43 @@ end
 
 -- TRADE
 
+StaticPopupDialogs["PROJECT60_CANCEL_TRADE"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Cancel trade with outsider %s?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
+        CancelTrade()
+    end,
+}
+
 -- UNTESTED
 function eventFrame:TRADE_SHOW(trader)
     if not AllowedUnit("npc") then
-        if config.enforce then
-            CancelTrade()
-            ChatMessage(L("Cancelled trade"))
-        else
-            ChatMessage(L("No trades with outsiders"))
-        end
+        local outsiderName = UnitName("npc")
+        StaticPopup_Show("PROJECT60_CANCEL_TRADE", outsiderName)
     end
 end
 
 -- RECRUIT-A-FRIEND
 
+StaticPopupDialogs["PROJECT60_DECLINE_LEVEL_GRANT"] = {
+    button1 = YES,
+    button2 = NO,
+    text = L("Decline Recruit-a-Friend boost?"),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function()
+        DeclineLevelGrant()
+    end,
+}
+
 -- UNTESTED
 function eventFrame:LEVEL_GRANT_PROPOSED()
-    if config.enforce then
-        DeclineLevelGrant()
-        ChatMessage(L("Declined Recruit-a-Friend boost"))
-    else
-        ChatMessage(L("No Recruit-a-Friend"))
-    end
+    StaticPopup_Show("PROJECT60_DECLINE_LEVEL_GRANT")
 end
 
 -- SUMMON
@@ -673,6 +747,7 @@ local function patched_PlayerTalentFrameTalents_OnShow(...)
     original_PlayerTalentFrameTalents_OnShow(...)
 
     if config.enabled then
+        -- XXX replace with dismissable opaque overlay frame
         if config.enforce then
             PlayerTalentFrameTalents:Hide()
             ChatMessage(L("Disabled Talents"))
@@ -750,6 +825,7 @@ function eventFrame:TRAINER_SHOW()
     for skillIndex = 1, GetNumTrainerServices() do
         local serviceName, serviceType, texture, reqLevel = GetTrainerServiceInfo(skillIndex)
         if not AllowedTrainer(serviceName) then
+            -- XXX replace with dismissable opaque overlay frame
             local trainerName = UnitName("npc")
             if config.enforce then
                 CloseTrainer()
@@ -767,6 +843,7 @@ end
 function eventFrame:TRANSMOGRIFY_OPEN()
     if not config.enabled then return end
     
+    -- XXX replace with dismissable opaque overlay frame
     if config.enforce then
         C_Transmog.Close()
         ChatMessage(L("Closed transmogrification"))
@@ -779,6 +856,7 @@ end
 function eventFrame:TRANSMOG_COLLECTION_UPDATED()
     if not config.enabled then return end
 
+    -- XXX replace with dismissable opaque overlay frame
     if config.enforce then
         WardrobeCollectionFrame:Hide()
         ChatMessage(L("Disabled Appearances"))
@@ -789,17 +867,27 @@ end
 
 -- XP
 
+StaticPopupDialogs["PROJECT60_STOP_XP_GAIN"] = {
+    button1 = OKAY,
+    text = "Stop XP Gain",
+    subText = (UnitFactionGroup("player") == "Alliance"
+                   and L("Visit Behsten in Stormwind")
+                   or L("Visit Slahtz in Orgrimmar")),
+    enterClicksFirstButton = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+local function AllowedXP(unitID)
+    return UnitLevel(unitID) < MAX_PLAYER_LEVEL_TABLE[LE_EXPANSION_CLASSIC]
+end
+
 -- UNTESTED
 function eventFrame:CHAT_MSG_COMBAT_XP_GAIN()
     if not config.enabled then return end
     
-    if UnitLevel("player") == MAX_PLAYER_LEVEL_TABLE[LE_EXPANSION_CLASSIC] and not IsXPUserDisabled() then
-        local factionEN = UnitFactionGroup("player")
-        if factionEN == "Alliance" then
-            Warning(L("Stop XP Gain: visit Behsten in Stormwind"))
-        else
-            Warning(L("Stop XP Gain: visit Slahtz in Orgrimmar"))
-        end
+    if not AllowedXP("player") and not IsXPUserDisabled() then
+        StaticPopup_Show("PROJECT60_STOP_XP_GAIN")
     end
 end
 
@@ -812,6 +900,7 @@ RaidFinderFrame:SetScript("OnShow", patched_RaidFinderFrame_OnShow)
 AreTalentsLocked = patched_AreTalentsLocked
 GetTrainerServiceInfo = patched_GetTrainerServiceInfo
 TalentMicroButton.HasPvpTalentAlertToShow = patched_TalentMicroButton_HasPvpTalentAlertToShow
+OpenMailAttachment_OnClick = patched_OpenMailAttachment_OnClick
 
 local function Enable()
     -- reset message debouncers
@@ -980,58 +1069,83 @@ L["frFR"] = {
     ["Inscription"] = "Calligraphie",
     ["Apprentice Riding"] = "Apprenti cavalier",
     ["Journeyman Riding"] = "Compagnon cavalier",
-    -- addon strings
-    ["Warning"] = nil,
-    ["Dismounted"] = nil,
-    ["Dismounted %s"] = nil,
-    ["Disallowed area"] = nil,
-    ["No mounts until level %d"] = nil,
-    ["No special or flying mounts"] = nil,
+
+    -- area
+    ["Disallowed area %s"] = nil,
+
+    -- mount
+    ["Dismount %s?"] = nil,
+    ["Exitted vehicle"] = nil,
+    --["No vehicles"] = nil,
+
+    -- training
     ["Portal: Silvermoon"] = nil,
     ["Portal: Dalaran - Northrend"] = nil,
-    ["Disallowed race or class"] = nil,
-    ["Disallowed race %s"] = nil,
-    ["Disallowed class %s"] = nil,
-    ["Deleted heirloom"] = nil,
-    ["Unequipped heirloom or disallowed gear"] = nil,
-    ["No heirloom or disallowed gear"] = nil,
-    ["Left party with outsiders"] = nil,
-    ["No parties with outsiders"] = nil,
-    ["Leaving Auction House"] = nil,
-    ["No Auction House"] = nil,
-    ["Cancelled aura %s"] = nil,
-    ["No aura %s"] = nil,
-    ["Declined group with outsider"] = nil,
-    ["No groups with outsider"] = nil,
-    ["Disabled Heirlooms"] = nil,
-    ["No heirlooms"] = nil,
-    ["Disabled Dungeon Finder and Raid Finder"] = nil,
-    ["No Dungeon Finder nor Raid Finder"] = nil,
-    ["Disabled Dungeon Finder and Raid Finder"] = nil,
-    ["No Dungeon Finder nor Raid Finder"] = nil,
-    ["Exitted vehicle"] = nil,
-    ["No vehicles"] = nil,
-    ["Disabled Toy Box"] = nil,
-    ["No toys"] = nil,
-    ["Cancelled trade"] = nil,
-    ["No trades with outsiders"] = nil,
-    ["Declined Recruit-a-Friend boost"] = nil,
-    ["No Recruit-a-Friend"] = nil,
-    ["Disabled Talents"] = nil,
-    ["No talents"] = nil,
     ["Blocked training %s"] = nil,
     ["No training %s"] = nil,
     ["Adjusted %s level requirement"] = nil,
     ["No %s until level %d"] = nil,
     ["Closed trainer %s"] = nil,
     ["No training from %s"] = nil,
+
+    -- race/class
+    ["Disallowed race %s"] = nil,
+    ["Disallowed class %s"] = nil,
+
+    -- equip
+    ["Deleted heirloom"] = nil,
+    ["Unequipped heirloom or disallowed gear"] = nil,
+    ["No heirloom or disallowed gear"] = nil,
+
+    -- auction house
+    ["Close Auction House?"] = nil,
+
+    -- aura
+    ["Cancelled aura %s"] = nil,
+    ["No aura %s"] = nil,
+
+    -- group
+    ["Leave party with outsider %s?"] = nil,
+    ["Decline group with outsider %s?"] = nil,
+    ["No groups with outsider"] = nil,
+    ["Disabled Dungeon Finder and Raid Finder"] = nil,
+    ["No Dungeon Finder nor Raid Finder"] = nil,
+    ["Disabled Dungeon Finder and Raid Finder"] = nil,
+    ["No Dungeon Finder nor Raid Finder"] = nil,
+
+    -- journal
+    ["Disabled Heirlooms"] = nil,
+    ["No heirlooms"] = nil,
+    ["Disabled Toy Box"] = nil,
+    ["No toys"] = nil,
+
+    -- trade
+    ["Cancel trade with outsider %s?"] = nil,
+
+    -- recruit-a-friend
+    ["Decline Recruit-a-Friend boost?"] = nil,
+
+    -- talents
+    ["Disabled Talents"] = nil,
+    ["No talents"] = nil,
+
+    -- transmog
     ["Closed transmogrification"] = nil,
     ["No transmogrification"] = nil,
+
+    -- appearances
     ["Disabled Appearances"] = nil,
     ["No appearances"] = nil,
-    ["Stop XP Gain: visit Behsten in Stormwind"] = nil,
-    ["Stop XP Gain: visit Slahtz in Orgrimmar"] = nil,
+
+    -- xp
+    ["Stop XP Gain"] = nil,
+    ["Visit Behsten in Stormwind"] = nil,
+    ["Visit Slahtz in Orgrimmar"] = nil,
+
+    -- version
     ["Obsolete add-on version %s; new version %s per %s"] = nil,
+
+    -- /project60
     ["Enabled"] = nil,
     ["disable"] = nil,
     ["Disabled"] = nil,
@@ -1040,4 +1154,7 @@ L["frFR"] = {
     ["overlook"] = nil,
     ["Enforcement off"] = nil,
     ["Welcome"] = "Bonjour",
+
+    -- mail
+    ["Take mail item from outsider %s?"] = nil,
 }
